@@ -1,0 +1,51 @@
+---
+- name: Specialized Service Installation and Scheduled Restarts
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Get EC2 Metadata
+      amazon.aws.ec2_metadata_facts:
+
+    - name: Gather EC2 instance tags
+      amazon.aws.ec2_tag_info:
+        region: "us-east-1"
+        resource: "{{ ansible_ec2_instance_id }}"
+      register: instance_tags
+      delegate_to: localhost
+
+    - name: Verify Owner tag
+      ansible.builtin.meta: end_play
+      when: instance_tags.tags.Owner != "Shoham"
+
+    - name: Install MySQL on slave1
+      ansible.builtin.apt:
+        name: mysql-server
+        state: latest
+        force: yes
+      when: "'mysql_slaves' in group_names"
+
+    - name: Schedule MySQL restart (Sunday 6 AM)
+      ansible.builtin.cron:
+        name: "Weekly MySQL Slave Restart"
+        weekday: "0"
+        hour: "6"
+        minute: "0"
+        job: "/sbin/reboot"
+      when: "'mysql_slaves' in group_names"
+
+    - name: Install Nginx on slave2
+      ansible.builtin.apt:
+        name: nginx
+        state: latest
+      when: "'nginx_slaves' in group_names"
+
+    - name: Schedule Nginx restart (Saturday Midnight)
+      ansible.builtin.cron:
+        name: "Weekly Nginx Slave Restart"
+        weekday: "6"
+        hour: "0"
+        minute: "0"
+        job: "/sbin/reboot"
+      when: "'nginx_slaves' in group_names"
